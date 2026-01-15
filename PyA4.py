@@ -5,7 +5,13 @@ from scipy.interpolate import AAA
 
 class A4Decomposition():
     """
-    A class to compute the A4 decomposition of the radius of gyration, Rg.
+    A class to compute the A4 rational decomposition of the radius of gyration, Rg, with
+
+    .. math::
+
+        R^2(\\omega) \\approx k_0 + \\sum_{n=1}^K \\frac{k_n}{\\omega^2 + \\eta_n^2}
+
+    where :math:`k_n` and :math:`\\eta_n` are the A4 coefficients.
     """
     def __init__(self,beta,hbar,K=4,w_max=200,N_support = 10000,fit_mode='uniform'):
         """
@@ -46,7 +52,18 @@ class A4Decomposition():
 
     @property
     def support(self):
-        ''' Generate the support for the AAA decomposition of the pole function'''    
+        """
+        Frequency support grid used for the AAA decomposition.
+
+        The support is generated lazily on first access according to
+        the initialized parameters
+
+        Returns
+        -------
+        support : ndarray
+            One-dimensional array of frequency support points.
+        """
+ 
         if not hasattr(self, "_support"):
             print("computing support")
             if self.fit_mode=='log': # logarithmic spacing including zero
@@ -74,10 +91,21 @@ class A4Decomposition():
 
     @property 
     def Rg(self):
-        '''Generate the Radius of Gyration, provided a given support'''
+        """
+        Radius of gyration evaluated on the frequency support grid.
+
+        The radius of gyration is generated lazily on first access according to
+        the initialized parameters.
+
+        Returns
+        -------
+        Rg : ndarray
+            Ring-polymer radius of gyration evaluated at the support points.
+        """
+
         if not hasattr(self, "_Rg"):
             print("computing Radius of Gyration")
-            support=self.support #generate support
+            support=self.support # generate support if needed
             self._Rg=np.zeros_like(support)
             for i, wi in enumerate(support):
                 if wi!=0:
@@ -88,7 +116,7 @@ class A4Decomposition():
 
     def compute(self, max_accuracy=False, doplot=False):
         """
-        A4 decomposition of the Radius of Gyration
+        A4 decomposition of the Radius of Gyration. Adds the results to the class object
 
         Parameters
         ----------
@@ -104,7 +132,7 @@ class A4Decomposition():
         if not hasattr(self, "_A4Complete"):
             print('computing A4 decomposition')
             # Load in fitting data
-            Rg = self.Rg                    
+            Rg = self.Rg + 0j                    
             support = self.support+ 0j    
 
             # Binary search for tolerance if K poles desired (assumes smaller tolerance => more pols)
@@ -148,26 +176,26 @@ class A4Decomposition():
             res_pos = self.res[mask]
 
             # calculate the gams and ws from pairs of conjugate pure-imaginary poles
-            gam_i_imagonly_nogam0 = -2*np.imag(pol_pos) * np.imag(res_pos)  
-            gam_i_imagonly = np.array([r(1000000),*gam_i_imagonly_nogam0]) # constant and residues for imaginary-only poles
-            w_i = np.imag(pol_pos)                          # new poles for imaginary-only poles
+            k_n_imagonly_nogam0 = -2*np.imag(pol_pos) * np.imag(res_pos)  
+            k_n_imagonly = np.array([r(1000000),*k_n_imagonly_nogam0]) # constant and residues for imaginary-only poles
+            eta_n = np.imag(pol_pos)                          # new poles for imaginary-only poles
 
             # Calculate the basis functions
             phi = np.zeros((len(support), len(pol_pos)+1), dtype=complex)
             phi[:, 0] = 1
             for j in range(len(pol_pos)):
-                phi[:, j+1] = 1 / (support**2 + w_i[j]**2)
+                phi[:, j+1] = 1 / (support**2 + eta_n[j]**2)
 
             # Calculate Rg for imaginary-only poles and imaginary residues
-            fit_im_pols = phi @ gam_i_imagonly
+            fit_im_pols = phi @ k_n_imagonly
 
             # Project the error onto the basis functions 
-            gam_i, residuals, rank, s = np.linalg.lstsq(phi, Rg, rcond=None)    
+            k_n, residuals, rank, s = np.linalg.lstsq(phi, Rg, rcond=None)    
 
-            # Make sure gam_i and w_i are real
-            self.gam_i = np.real(gam_i)
-            self.w_i = np.real(w_i)
-            fit_A4 = phi @ gam_i
+            # Make sure k_n and eta_n are real
+            self.k_n = np.real(k_n)
+            self.eta_n = np.real(eta_n)
+            fit_A4 = phi @ k_n
 
             # Compute errors (meansq error, converges to the integrated error for uniform spacing ONLY)
             error_im_pols = np.sum(np.abs(Rg - fit_im_pols)**2)
@@ -177,8 +205,7 @@ class A4Decomposition():
             print(f'Error from using only imaginary poles and residues: {error_im_pols:.2e}')
             print(f'Error from A4: {error_A4:.2e}')
 
-            # Plot results
-            if doplot:
+            if doplot: # Plot results
                 plt.figure()
                 plt.plot(support.real, Rg.real , 'k-', label='Exact')
                 plt.plot(support.real, fit_AAA.real, 'r--', label=f'AAA (error={error_AAA:.2e})')
@@ -192,7 +219,6 @@ class A4Decomposition():
                 plt.show()
 
         self._A4Complete=True
-        return 
 
     def printparams(self):
         ''' builds string of parameters used in the decomposition'''
@@ -209,13 +235,15 @@ class A4Decomposition():
         AAAdata = np.column_stack((np.real(self.pol),np.imag(self.pol),np.real(self.res),np.imag(self.res),))
         AAAheader=f"AAA decomposition of Radius of Gyration.\n\n{self.printparams()}\n\n{'pol_real':<22}{'pol_imag':<22}{'res_real':<22}{'res_imag':<22}"
         np.savetxt(os.path.join(outpath, f'AAA_poles_residues{extension}'),AAAdata,header=AAAheader, fmt="%22.16e %22.16e %22.16e %22.16e")
-        A4data = np.column_stack((np.array([np.nan,*self.w_i]),self.gam_i))
-        A4header=f"A4 decomposition of Radius of Gyration.\n\n{self.printparams()}\nNote that the w_i=nan corresponds to the constant term in the expansion\n\n{'w_i':<22}{'gam_i':<22}"
+        A4data = np.column_stack((np.array([np.nan,*self.eta_n]),self.k_n))
+        A4header=f"A4 decomposition of Radius of Gyration.\n\n{self.printparams()}\nNote that the eta_n=nan corresponds to the constant term in the expansion\n\n{'eta_n':<22}{'k_n':<22}"
         np.savetxt(os.path.join(outpath, f'A4_decomposition{extension}'),A4data,header=A4header, fmt="%22.16e %22.16e")
         print(f'Files saved successfully in {outpath}')
 
+    
+
 if __name__=='__main__':
 
-    A4decomp=A4Decomposition(beta=2,hbar=1,K=3,fit_mode='quadrature')
+    A4decomp=A4Decomposition(beta=2,hbar=1,K=3)
     A4decomp.compute(doplot=True)
     A4decomp.writetofile(outpath='data')
