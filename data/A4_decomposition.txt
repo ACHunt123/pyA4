@@ -1,0 +1,16 @@
+# A4 decomposition of Radius of Gyration.
+# 
+# beta = 2
+# hbar = 1
+# K = 3
+# wmax = 200
+# N_support = 10000
+# fit_mode = quadrature
+# gamma = 3.0
+# Note that the w_i=nan corresponds to the constant term in the expansion
+# 
+# w_i                   gam_i                 
+                   nan 2.3286021622128824e-03
+4.2027941528962231e+01 2.3679557177531166e+01
+9.5300978747192193e+00 3.7642567176635140e+00
+3.2127906911871404e+00 1.1302833675508772e+00
