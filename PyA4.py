@@ -1,3 +1,7 @@
+__title__ = 'A4Decomposition'
+__author__ = 'A. C. Hunt'
+__maintainer__ = 'A. C. Hunt'
+
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -5,15 +9,33 @@ from scipy.interpolate import AAA
 
 class A4Decomposition():
     """
-    A class to compute the A4 rational decomposition of the radius of gyration, Rg, with
+    A class to calc the A4 rational decomposition of thermal quantum statistics
+    for more effective management of Matsubara decay terms.
+
+    The radius of gyration, :math:`\\mathcal{R}^2(\\omega)`, is defined as:
 
     .. math::
 
-        R^2(\\omega) \\approx k_0 + \\sum_{n=1}^K \\frac{k_n}{\\omega^2 + \\eta_n^2}
+        \\mathcal{R}^2(\\omega) = \\frac{\\hbar}{2\\omega} \\left[
+        \\coth \\left( \\frac{\\beta \\hbar \\omega}{2} \\right) -
+        \\frac{2}{\\beta \\hbar \\omega} \\right]
+
+    Its analogue for the Fermi function is:
+
+    .. math::
+
+        \\mathcal{F}(\\omega) =  \\frac{\\hbar}{2\\omega}
+        \\tanh \\left( \\frac{\\beta \\hbar \\omega}{2} \\right) 
+
+    This class decomposes the two functions in form F_x(\\omega)
+    .. math::
+
+        F_x(\\omega) = k_0 + \\sum_{n=1}^K \\frac{k_n}{\\omega^2 + \\eta_n^2}
 
     where :math:`k_n` and :math:`\\eta_n` are the A4 coefficients.
+
     """
-    def __init__(self,beta,hbar,K=4,w_max=200,N_support = 10000,fit_mode='uniform'):
+    def __init__(self,beta,hbar,K=4,w_max=None,N_support=10000,fit_mode='uniform',distribution='Bose'):
         """
         Initialize an A4 spectral decomposition.
 
@@ -28,7 +50,7 @@ class A4Decomposition():
             Defaults to 4.
         w_max : float, optional
             Maximum frequency used to construct the support grid.
-            Defaults to 200.
+            Defaults to 200/(beta hbar) [such that beta hbar w_max/2 = 100]
         N_support : int, optional
             Number of support points used in the rational approximation.
             Defaults to 10000.
@@ -46,9 +68,11 @@ class A4Decomposition():
         self.hbar=hbar
         self.K=K
         # fitting parameters
-        self.wmax=w_max
+        self.w_max = 200/(beta*hbar) if w_max == None else w_max
         self.fit_mode=fit_mode
         self.N_support=N_support
+        # distribution parameters (Bose/Fermi)
+        self.distribution=distribution
 
     @property
     def support(self):
@@ -68,7 +92,7 @@ class A4Decomposition():
             print("computing support")
             if self.fit_mode=='log': # logarithmic spacing including zero
                 eps=1e-5
-                x_pos = np.logspace(np.log10(eps), np.log10(self.wmax), self.N_support // 2)
+                x_pos = np.logspace(np.log10(eps), np.log10(self.w_max), self.N_support // 2)
                 self._support = np.concatenate((-x_pos[::-1], [0.0], x_pos))
 
             elif self.fit_mode=='quadrature': # use the points from the quadrature of J(w)
@@ -78,12 +102,12 @@ class A4Decomposition():
                 self._support = np.concatenate((-w_j[::-1], [0.0], w_j))  # support points
 
             elif self.fit_mode == 'uniform': # uniform spacing including zero
-                self._support = np.linspace(-self.wmax,self.wmax,self.N_support,dtype=np.complex128)
+                self._support = np.linspace(-self.w_max,self.w_max,self.N_support,dtype=np.complex128)
 
             elif self.fit_mode == 'arctanh': #NOTE - need to choose w_max carefully here
                 eps=1e-5
                 range = np.linspace(-1+eps, 1-eps, self.N_support)
-                x = np.arctanh(range) * self.wmax
+                x = np.arctanh(range) * self.w_max
                 self._support = x[1:-1]
             else:
                 raise ValueError('Invalid mode for generating support points. Use "log", "quadrature", "arctanh" or "uniform".')
@@ -114,9 +138,35 @@ class A4Decomposition():
                     self._Rg[i] = (self.beta*self.hbar**2)/12
         return self._Rg
 
+    @property 
+    def Fg(self):
+        """
+        Fermi pole function evaluated on the frequency support grid.
+
+        This is generated lazily on first access according to
+        the initialized parameters.
+
+        Returns
+        -------
+        Fg : ndarray
+            Fermi pole function evaluated at the support points.
+        """
+
+        if not hasattr(self, "_Fp"):
+            print("computing Fermi pole function")
+            support=self.support # generate support if needed
+            self._Fp=np.zeros_like(support)
+            for i, wi in enumerate(support): 
+                if wi!=0:
+                    self._Fp[i] = (self.hbar/(2*wi))*(np.tanh(self.beta*self.hbar*wi/2))
+                else: # treat the 0 divergence nicely
+                    self._Fp[i] = (self.beta*self.hbar**2)/4
+        return self._Fp
+
     def compute(self, max_accuracy=False, doplot=False):
         """
-        A4 decomposition of the Radius of Gyration. Adds the results to the class object
+        A4 decomposition of the Radius of Gyration/ Fermi pole function.
+        Adds the results to the class object
 
         Parameters
         ----------
@@ -128,17 +178,31 @@ class A4Decomposition():
             If True, return as many poles as needed for maximum accuracy in the AAA fit
         doplot : bool
             If True, show plots of the original function and AAA approximants
+        
+        Returns
+        -------
+        eta_n : ndarray
+            Poles of the A4 approximant. Padded with a nan at eta_0 (as this term is the k_0 constant term in expansion)
+        k_n : ndarray
+            Residues of the A4 approximant, with k_0 being the constant term in the expansion
         """
         if not hasattr(self, "_A4Complete"):
             print('computing A4 decomposition')
             # Load in fitting data
-            Rg = self.Rg + 0j                    
+            if self.distribution=='Bose':
+                Fx = self.Rg + 0j        
+            elif self.distribution=='Fermi':
+                Fx = self.Fg + 0j    
+            else:
+               raise ValueError( f"Unknown distribution '{self.distribution}'. "
+                                "Expected 'Bose' or 'Fermi'.")
+                                            
             support = self.support+ 0j    
 
             # Binary search for tolerance if K poles desired (assumes smaller tolerance => more pols)
             if max_accuracy:
                 tol = 1e-10
-                r = AAA(support, Rg, rtol=tol)
+                r = AAA(support, Fx, rtol=tol)
             else:
                 max_tol = 1e0
                 min_tol = 1e-31
@@ -146,7 +210,7 @@ class A4Decomposition():
 
                 while True:
                     tol = (max_tol + min_tol) / 2
-                    r = AAA(support, Rg, rtol=tol)
+                    r = AAA(support, Fx, rtol=tol)
                     pol = r.poles()
                     # select significant poles
                     pol_clean = pol[np.imag(pol) > 1e-10]
@@ -157,7 +221,7 @@ class A4Decomposition():
                         min_tol = tol
 
                     if abs(max_tol - min_tol) < tol_err:
-                        r = AAA(support, Rg, rtol=max_tol)
+                        r = AAA(support, Fx, rtol=max_tol)
                         pol = r.poles()
                         pol_clean = pol[np.imag(pol) > 1e-10]
                         if len(pol_clean) != self.K:
@@ -186,11 +250,11 @@ class A4Decomposition():
             for j in range(len(pol_pos)):
                 phi[:, j+1] = 1 / (support**2 + eta_n[j]**2)
 
-            # Calculate Rg for imaginary-only poles and imaginary residues
+            # Calculate Fx for imaginary-only poles and imaginary residues
             fit_im_pols = phi @ k_n_imagonly
 
             # Project the error onto the basis functions 
-            k_n, residuals, rank, s = np.linalg.lstsq(phi, Rg, rcond=None)    
+            k_n, residuals, rank, s = np.linalg.lstsq(phi, Fx, rcond=None)    
 
             # Make sure k_n and eta_n are real
             self.k_n = np.real(k_n)
@@ -198,31 +262,34 @@ class A4Decomposition():
             fit_A4 = phi @ k_n
 
             # Compute errors (meansq error, converges to the integrated error for uniform spacing ONLY)
-            error_im_pols = np.sum(np.abs(Rg - fit_im_pols)**2)
-            error_AAA = np.sum(np.abs(Rg - fit_AAA)**2)
-            error_A4 = np.sum(np.abs(Rg - fit_A4)**2)
+            error_im_pols = np.sum(np.abs(Fx - fit_im_pols)**2)
+            error_AAA = np.sum(np.abs(Fx - fit_AAA)**2)
+            error_A4 = np.sum(np.abs(Fx - fit_A4)**2)
             print(f'Error from original AAA approximant: {error_AAA:.2e}')
             print(f'Error from using only imaginary poles and residues: {error_im_pols:.2e}')
             print(f'Error from A4: {error_A4:.2e}')
 
             if doplot: # Plot results
                 plt.figure()
-                plt.plot(support.real, Rg.real , 'k-', label='Exact')
+                plt.plot(support.real, Fx.real , 'k-', label='Exact')
                 plt.plot(support.real, fit_AAA.real, 'r--', label=f'AAA (error={error_AAA:.2e})')
                 plt.plot(support.real, fit_A4.real, 'g--', label=f'A4 (error={error_A4:.2e})')
                 plt.plot(support.real, fit_im_pols.real, 'b--', label=f'Imag-only poles (error={error_im_pols:.2e})')
-                plt.xlabel('x')
-                plt.ylabel('f(x)')
-                plt.title('AAA Approximation')
+                plt.xlabel(r'$\omega$')
+                labels={'Bose':r'\mathcal{R}^2(\omega)','Fermi':r'\mathcal{P}^2(\omega)'}
+                plt.ylabel(r'$f(\omega)$')
+                plt.title(rf'A4 Approximation of ${labels[self.distribution]}$ (for use in the {self.distribution} function)')
                 plt.legend()
                 plt.grid(True)
+                # plt.savefig('plot.pdf')
                 plt.show()
 
         self._A4Complete=True
+        return np.array([np.nan,*self.eta_n]),self.k_n
 
     def printparams(self):
         ''' builds string of parameters used in the decomposition'''
-        self._PARAMETERS = ("beta","hbar","K","wmax","N_support","fit_mode","gamma")
+        self._PARAMETERS = ("beta","hbar","K","w_max","N_support","fit_mode","gamma")
         return  "\n".join(f"{name} = {getattr(self, name)}" for name in self._PARAMETERS if hasattr(self, name))
 
 
@@ -244,6 +311,8 @@ class A4Decomposition():
 
 if __name__=='__main__':
 
-    A4decomp=A4Decomposition(beta=2,hbar=1,K=3)
+    A4decomp=A4Decomposition(beta=11,hbar=1.2,K=3,distribution='Fermi')
+    # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Fermi')
+    # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Bose')
     A4decomp.compute(doplot=True)
-    A4decomp.writetofile(outpath='data')
+    # A4decomp.writetofile(outpath='data')
