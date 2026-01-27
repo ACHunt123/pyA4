@@ -5,7 +5,7 @@ __maintainer__ = 'A. C. Hunt'
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from scipy.interpolate import AAA
+from decompositions import AAA,ESPRIT_FT
 
 class A4Decomposition():
     """
@@ -74,7 +74,7 @@ class A4Decomposition():
         # distribution parameters (Bose/Fermi)
         self.distribution=distribution
         # type of rational decomposition method to use
-        self.rational_decomposition_type = ['AAA'][0]
+        self.rational_decomposition_type = ['AAA','ESPRIT'][1]
 
     @property
     def support(self):
@@ -165,10 +165,17 @@ class A4Decomposition():
                     self._Fp[i] = (self.beta*self.hbar**2)/4
         return self._Fp
     
-    def rational_decomp(self, support, Function, tolerance):
+
+    def rational_decomp(self, support, func, tolerance):
         
         if self.rational_decomposition_type == 'AAA':
-            return AAA(support, Function, rtol=tolerance)
+            return AAA(support,func,tolerance)
+        
+        if self.rational_decomposition_type == 'ESPRIT':
+            assert self.fit_mode=='uniform' # Ensure support is uniform
+            self.keep_going=False           # exit the iterations (K poles is guaranteed)
+            return ESPRIT_FT(support,func,self.K)    
+            
         else:
             raise ValueError('Invalid mode for generating support points. Use "log", "quadrature", "arctanh" or "uniform".')
 
@@ -195,6 +202,8 @@ class A4Decomposition():
         k_n : ndarray
             Residues of the A4 approximant, with k_0 being the constant term in the expansion
         """
+        self.keep_going=True # A flag to force exit (as ESPRIT needs only one iteration)
+
         if not hasattr(self, "_A4Complete"):
             print('computing A4 decomposition')
             # Load in fitting data
@@ -211,16 +220,15 @@ class A4Decomposition():
             # Binary search for tolerance if K poles desired (assumes smaller tolerance => more pols)
             if max_accuracy:
                 tol = 1e-10
-                r = self.rational_decomp(support, Fx, tol)
+                pol,res,fit = self.rational_decomp(support, Fx, tol)
             else:
                 max_tol = 1e0
                 min_tol = 1e-31
                 tol_err = 1e-15
 
-                while True:
+                while self.keep_going==True:
                     tol = (max_tol + min_tol) / 2
-                    r = self.rational_decomp(support, Fx, tol)
-                    pol = r.poles()
+                    pol,res,fit = self.rational_decomp(support, Fx, tol)
                     # select significant poles
                     pol_clean = pol[np.imag(pol) > 1e-10]
                     print(f'\rtol = {tol:.4g} -> {len(pol_clean)} poles', end='', flush=True)
@@ -230,27 +238,28 @@ class A4Decomposition():
                         min_tol = tol
 
                     if abs(max_tol - min_tol) < tol_err:
-                        r = self.rational_decomp(support, Fx, max_tol)
-                        pol = r.poles()
+                        pol,res,fit = self.rational_decomp(support, Fx, max_tol)
                         pol_clean = pol[np.imag(pol) > 1e-10]
                         if len(pol_clean) != self.K:
                             print(f'\rWarning: desired K={self.K}, found {len(pol_clean)} poles')
                         break
             print('\r', end='', flush=True)
             # Compute residues and get the AAA fit
-            self.pol = r.poles()
-            self.res = r.residues()
-            self.errvec = r.errors
-            fit_AAA = r(support)
+            self.pol = pol
+            self.res = res
+            fit_AAA = fit
 
             # Project onto imaginary-only poles
-            mask = np.imag(self.pol) > 1e-5
+            mask = np.imag(self.pol) > 1e-50
             pol_pos = self.pol[mask]
             res_pos = self.res[mask]
 
+            print('poles',pol)
+            print('poles pos',pol_pos)
+
             # calculate the gams and ws from pairs of conjugate pure-imaginary poles
             k_n_imagonly_nogam0 = -2*np.imag(pol_pos) * np.imag(res_pos)  
-            k_n_imagonly = np.array([r(1000000),*k_n_imagonly_nogam0]) # constant and residues for imaginary-only poles
+            k_n_imagonly = np.array([fit[-1],*k_n_imagonly_nogam0]) # constant and residues for imaginary-only poles
             eta_n = np.imag(pol_pos)                          # new poles for imaginary-only poles
 
             # Calculate the basis functions
@@ -281,8 +290,8 @@ class A4Decomposition():
             if doplot: # Plot results
                 plt.figure()
                 plt.plot(support.real, Fx.real , 'k-', label='Exact')
-                plt.plot(support.real, fit_AAA.real, 'r--', label=f'AAA (error={error_AAA:.2e})')
-                plt.plot(support.real, fit_A4.real, 'g--', label=f'A4 (error={error_A4:.2e})')
+                plt.plot(support.real, fit_AAA.real, 'r--', label=f'{self.rational_decomposition_type} (error={error_AAA:.2e})')
+                plt.plot(support.real, fit_A4.real, 'g--', label=f'A4 using {self.rational_decomposition_type} (error={error_A4:.2e})')
                 plt.plot(support.real, fit_im_pols.real, 'b--', label=f'Imag-only poles (error={error_im_pols:.2e})')
                 plt.xlabel(r'$\omega$')
                 labels={'Bose':r'\mathcal{R}^2(\omega)','Fermi':r'\mathcal{P}^2(\omega)'}
@@ -310,17 +319,17 @@ class A4Decomposition():
         os.makedirs(outpath, exist_ok=True)
         AAAdata = np.column_stack((np.real(self.pol),np.imag(self.pol),np.real(self.res),np.imag(self.res),))
         AAAheader=f"AAA decomposition of Radius of Gyration.\n\n{self.printparams()}\n\n{'pol_real':<22}{'pol_imag':<22}{'res_real':<22}{'res_imag':<22}"
-        np.savetxt(os.path.join(outpath, f'AAA_poles_residues{extension}'),AAAdata,header=AAAheader, fmt="%22.16e %22.16e %22.16e %22.16e")
+        np.savetxt(os.path.join(outpath, f'{self.rational_decomposition_type}_poles_residues{extension}'),AAAdata,header=AAAheader, fmt="%22.16e %22.16e %22.16e %22.16e")
         A4data = np.column_stack((np.array([np.nan,*self.eta_n]),self.k_n))
         A4header=f"A4 decomposition of Radius of Gyration.\n\n{self.printparams()}\nNote that the eta_n=nan corresponds to the constant term in the expansion\n\n{'eta_n':<22}{'k_n':<22}"
-        np.savetxt(os.path.join(outpath, f'A4_decomposition{extension}'),A4data,header=A4header, fmt="%22.16e %22.16e")
+        np.savetxt(os.path.join(outpath, f'A4_decomp.(using{self.rational_decomposition_type}){extension}'),A4data,header=A4header, fmt="%22.16e %22.16e")
         print(f'Files saved successfully in {outpath}')
 
     
 
 if __name__=='__main__':
 
-    A4decomp=A4Decomposition(beta=11,hbar=1.2,K=3,distribution='Fermi')
+    A4decomp=A4Decomposition(beta=11,hbar=1.2,K=10,distribution='Fermi',N_support=1000)
     # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Fermi')
     # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Bose')
     A4decomp.compute(doplot=True)
