@@ -53,7 +53,7 @@ def AAA(support,Function,tolerance):
     return r.poles(), r.residues(), r(support)
 
 def ESPRIT_FT(omega,Function,K):
-    ''' Compute inverse Fourier transform of the function
+    ''' Compute inverse Fourier transform of the (ASSUMED SYMMETRIC) function
         then run the ESPRIT algo on it'''
     # Assume omega array: [-w_max, ... 0, ... w_max]
     d_omega = omega[1] - omega[0]
