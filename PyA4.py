@@ -73,6 +73,8 @@ class A4Decomposition():
         self.N_support=N_support
         # distribution parameters (Bose/Fermi)
         self.distribution=distribution
+        # type of rational decomposition method to use
+        self.rational_decomposition_type = ['AAA'][0]
 
     @property
     def support(self):
@@ -162,6 +164,13 @@ class A4Decomposition():
                 else: # treat the 0 divergence nicely
                     self._Fp[i] = (self.beta*self.hbar**2)/4
         return self._Fp
+    
+    def rational_decomp(self, support, Function, tolerance):
+        
+        if self.rational_decomposition_type == 'AAA':
+            return AAA(support, Function, rtol=tolerance)
+        else:
+            raise ValueError('Invalid mode for generating support points. Use "log", "quadrature", "arctanh" or "uniform".')
 
     def compute(self, max_accuracy=False, doplot=False):
         """
@@ -202,7 +211,7 @@ class A4Decomposition():
             # Binary search for tolerance if K poles desired (assumes smaller tolerance => more pols)
             if max_accuracy:
                 tol = 1e-10
-                r = AAA(support, Fx, rtol=tol)
+                r = self.rational_decomp(support, Fx, tol)
             else:
                 max_tol = 1e0
                 min_tol = 1e-31
@@ -210,7 +219,7 @@ class A4Decomposition():
 
                 while True:
                     tol = (max_tol + min_tol) / 2
-                    r = AAA(support, Fx, rtol=tol)
+                    r = self.rational_decomp(support, Fx, tol)
                     pol = r.poles()
                     # select significant poles
                     pol_clean = pol[np.imag(pol) > 1e-10]
@@ -221,7 +230,7 @@ class A4Decomposition():
                         min_tol = tol
 
                     if abs(max_tol - min_tol) < tol_err:
-                        r = AAA(support, Fx, rtol=max_tol)
+                        r = self.rational_decomp(support, Fx, max_tol)
                         pol = r.poles()
                         pol_clean = pol[np.imag(pol) > 1e-10]
                         if len(pol_clean) != self.K:
