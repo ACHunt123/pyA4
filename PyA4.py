@@ -5,7 +5,7 @@ __maintainer__ = 'A. C. Hunt'
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from decompositions import AAA,ESPRIT_FT
+from decompositions import AAA,ESPRIT_FT,AAA_BT
 
 class A4Decomposition():
     """
@@ -35,7 +35,7 @@ class A4Decomposition():
     where :math:`k_n` and :math:`\\eta_n` are the A4 coefficients.
 
     """
-    def __init__(self,beta,hbar,K=4,w_max=None,N_support=10000,fit_mode='uniform',distribution='Bose'):
+    def __init__(self,beta,hbar,K=4,w_max=None,N_support=10000,fit_mode='uniform',distribution='Bose',rational_decomposition_type='AAA'):
         """
         Initialize an A4 spectral decomposition.
 
@@ -74,7 +74,7 @@ class A4Decomposition():
         # distribution parameters (Bose/Fermi)
         self.distribution=distribution
         # type of rational decomposition method to use
-        self.rational_decomposition_type = ['AAA','ESPRIT'][1]
+        self.rational_decomposition_type = rational_decomposition_type
 
     @property
     def support(self):
@@ -174,7 +174,11 @@ class A4Decomposition():
         if self.rational_decomposition_type == 'ESPRIT':
             assert self.fit_mode=='uniform' # Ensure support is uniform
             self.keep_going=False           # exit the iterations (K poles is guaranteed)
-            return ESPRIT_FT(support,func,self.K)    
+            return ESPRIT_FT(support,func,self.K)  
+
+        if self.rational_decomposition_type == 'AAA_BT':
+            self.keep_going=False           # exit the iterations (K poles is guaranteed)
+            return AAA_BT(support,func,self.K)  
             
         else:
             raise ValueError('Invalid mode for generating support points. Use "log", "quadrature", "arctanh" or "uniform".')
@@ -220,6 +224,7 @@ class A4Decomposition():
             # Binary search for tolerance if K poles desired (assumes smaller tolerance => more pols)
             if max_accuracy:
                 tol = 1e-10
+                self.K = 10 **10
                 pol,res,fit = self.rational_decomp(support, Fx, tol)
             else:
                 max_tol = 1e0
@@ -328,8 +333,10 @@ class A4Decomposition():
     
 
 if __name__=='__main__':
-
-    A4decomp=A4Decomposition(beta=11,hbar=1.2,K=10,distribution='Fermi',N_support=1000)
+    rdt=['AAA','ESPRIT_FT','AAA_BT'][0]
+    rdt=['AAA','ESPRIT_FT','AAA_BT'][2]
+    # A4decomp=A4Decomposition(beta=100,hbar=1,K=5,distribution='Fermi',N_support=10000)
+    A4decomp=A4Decomposition(beta=100,hbar=1,K=10,distribution='Bose',N_support=10000,rational_decomposition_type=rdt)
     # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Fermi')
     # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Bose')
     A4decomp.compute(doplot=True)
