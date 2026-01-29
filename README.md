@@ -66,7 +66,7 @@ Create an `A4Decomposition` object by specifying the inverse temperature, Planck
 Then compute the decomposition, and plot if neccessary
 
 ```python
-from A4Decomposition import A4Decomposition
+from PyA4 import A4Decomposition
 
 A4 = A4Decomposition(
     beta=100,
