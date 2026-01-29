@@ -1,4 +1,4 @@
-# A4Decomposition
+# PyA4: Python implementation of A4 and related spectral decomposition methods
 
 A Python implementation of the **A4 rational decomposition** for thermal quantum statistics, designed to efficiently approximate Bose and Fermi functions.
 
