@@ -57,3 +57,25 @@ where the coefficients $(k_n, \eta_n)$ are obtained via rational approximation.
 ├── decompositions.py    # AAA / ESPRIT / AAA_BT routines
 ├── A4BCF.py             # Bath correlation function [WORK IN PROGRESS]
 └── README.md            # Project documentation
+```
+
+## Basic Usage
+
+Create an `A4Decomposition` object by specifying the inverse temperature, Planck constant, number of poles, and distribution type. Then call `compute()` to obtain the A4 coefficients.
+
+Then compute the decomposition, and plot if neccessary
+
+```python
+from A4Decomposition import A4Decomposition
+
+A4 = A4Decomposition(
+    beta=100,
+    hbar=1.0,
+    K=10,
+    distribution="Bose",
+    rational_decomposition_type="AAA",
+    N_support=10000
+)
+
+eta_n, k_n = A4.compute(doplot=True)
+
