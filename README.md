@@ -16,8 +16,8 @@ Via the ring-polymer radius of gyration:
 $$
 \mathcal{R}^2(\omega) = \frac{\hbar}{2\omega}
 \left[
-\coth\left(\frac{\beta\hbar\omega}{2}\right)
-- \frac{2}{\beta\hbar\omega}
+\coth\left(\frac{\beta\hbar\omega}{2}
+ \right) - \frac{2}{\beta\hbar\omega}
 \right]
 $$
 
