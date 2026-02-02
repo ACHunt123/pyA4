@@ -29,18 +29,18 @@ class A4_BCF:
         Set the pole-residue representation of J(w).
         J(w) = sum_k residues[k] / (w - poles[k])
         """
-        self.poles = np.asarray(poles)
-        self.residues = np.asarray(residues)
+        self.Jw_pol = np.asarray(poles)
+        self.Jw_res = np.asarray(residues)
 
-        if len(self.poles) != len(self.residues):
+        if len(self.Jw_pol) != len(self.Jw_res):
             raise ValueError("poles and residues must have same length")
 
     def J(self, w):
         """
         Evaluate the spectral density J(w).
         """
-        if self.poles is None: raise RuntimeError("Spectral density not set")
-        return np.sum(self.residues / (w - self.poles), axis=0)
+        if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
+        return np.sum(self.Jw_res / (w - self.Jw_pol), axis=0)
 
     def plot_J(self, wmin, wmax, npts=1000):
         """
@@ -63,10 +63,22 @@ class A4_BCF:
         """
         Compute the bath correlation function using A4 decomposition.
         """
-        if self.poles is None:
-            raise RuntimeError("Spectral density not set")
+        if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
 
-        self.A4decomp.compute(doplot=doplot)
+
+        self.eta, self.k = self.A4decomp.compute(doplot=doplot)
+
+        self.Rg_pol = 1.j*np.concatenate([self.eta[1:],-self.eta[1:]])
+        self.Rg_res = np.concatenate([self.k[1:],self.k[1:]])/(self.Rg_pol*2.)
+
+        if(1):
+            w=np.linspace(-15,15,1000)
+            plt.plot(w,np.sum(self.Rg_res[:,None]/(w[None,:]-self.Rg_pol[:,None]),axis=0))
+            plt.plot(w,np.imag(np.sum(self.Rg_res[:,None]/(w[None,:]-self.Rg_pol[:,None]),axis=0)),label='imag')
+            plt.plot(w,np.sum(self.k[1:,None]/(self.eta[1:,None]**2+w[None,:]**2),axis=0),label='with etas',linestyle='--',color='k')
+            
+            plt.legend()
+            plt.show()
 
         # TO BE CONTINUED
 
@@ -74,7 +86,7 @@ class A4_BCF:
         # return self.bcf_modes
     
 if __name__ == '__main__':
-    bcf = A4_BCF(beta=11, hbar=1.2, K=3)
+    bcf = A4_BCF(beta=11, hbar=1.2, K=3, distribution='Bose')
 
     poles = [1j, -1j]
     residues = [0.5, 0.5]
@@ -83,7 +95,7 @@ if __name__ == '__main__':
     residues = [0.5, 0.5]
 
     bcf.set_spectral_density(poles, residues)
-    bcf.plot_J(-5, 5)
+    # bcf.plot_J(-5, 5)
 
-    modes = bcf.compute_bcf(doplot=True)
+    modes = bcf.compute_bcf(doplot=0)
     print(modes)
