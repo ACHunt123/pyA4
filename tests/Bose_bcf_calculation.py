@@ -1,10 +1,10 @@
-from  pyA4.A4BCF import BCF
+from  pyA4.Bose_BCF import BoseBCF
 import numpy as np
 
 # Test 1: Debye bath with single pole in Rg
 beta=11
 hbar=1
-bcf = BCF(beta=beta, hbar=hbar)
+bcf = BoseBCF(beta=beta, hbar=hbar)
 
 # setup the Jw
 eta_DL=2

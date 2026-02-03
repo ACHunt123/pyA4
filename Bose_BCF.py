@@ -6,7 +6,7 @@ from PyA4 import A4Decomposition
 import numpy as np
 import matplotlib.pyplot as plt
 
-class BCF:
+class BoseBCF:
     """
     Bath correlation function (BCF) constructed from a pole-residue
     representation of the spectral density, and radius of Gyrations
@@ -139,7 +139,7 @@ if __name__ == '__main__':
     # Initialize object
     beta=11
     hbar=1
-    bcf = BCF(beta=beta, hbar=hbar)
+    bcf = BoseBCF(beta=beta, hbar=hbar)
 
     # set Rg (with K pole A4 decomposition)
     K=5
