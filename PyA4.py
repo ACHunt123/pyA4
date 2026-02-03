@@ -259,9 +259,6 @@ class A4Decomposition():
             pol_pos = self.pol[mask]
             res_pos = self.res[mask]
 
-            print('poles',pol)
-            print('poles pos',pol_pos)
-
             # calculate the gams and ws from pairs of conjugate pure-imaginary poles
             k_n_imagonly_nogam0 = -2*np.imag(pol_pos) * np.imag(res_pos)  
             k_n_imagonly = np.array([fit[-1],*k_n_imagonly_nogam0]) # constant and residues for imaginary-only poles

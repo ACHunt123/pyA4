@@ -71,16 +71,10 @@ class BCF:
 
 
     def J(self, w):
-        """
-        Evaluate the spectral density J(w).
-        """
         if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
         return np.sum(self.Jw_res[:,None] / (w[None,:] - self.Jw_pol[:,None]), axis=0)
 
     def plot_J(self, wmin, wmax, npts=1000, show=False):
-        """
-        Plot the spectral density.
-        """
         w = np.linspace(wmin, wmax, npts)
         Jw = self.J(w)
         plt.plot(w, np.real(Jw), label='Re J(w)')
@@ -105,28 +99,23 @@ class BCF:
     # --------------------------------------------------
     # BCF
     # --------------------------------------------------
-    def compute_bcf(self, doplot=False):
+    def compute_bcf(self):
         """
-        Compute the bath correlation function using A4 decomposition.
+        Compute the bath correlation function using the poles and residues supplied.
 
-        Outputs in form 
-
-        C(t) = \sum_n kap_n \exp{-gam_n t} + zeta delta(t)
+        Outputs coefficients such that
+        C(t) = \sum_n kap[n] \exp{-gam[n] t} + zeta delta(t)
         """
         if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
         if self.Rg_pol is None: raise RuntimeError("Rg decomposition not set")
 
         # Find the frequencies and the Masks for the Jw and Rg coeffs
-        # self.pol_pos=np.concatenate([self.Jw_pol_pos,self.Rg_pol_pos])
         self.gam=-1j*np.concatenate([self.Jw_pol_pos,self.Rg_pol_pos])
-
         n_Jw=len(self.Jw_pol_pos)
         Jw_idx = np.arange(n_Jw)
 
-
         # Find the prefactors [more difficult...]
         self.kap=np.zeros_like(self.gam,dtype=complex)
-
         # 1) Add on the classical stuff IGNORING 1/w PV (as it must cancel by symmetry)
         self.kap[Jw_idx] += (2.j/self.beta)*self.Jw_res_pos/self.Jw_pol_pos
         # 2) Add on the imaginary stuff
@@ -141,66 +130,34 @@ class BCF:
         # 4) Finally do the constant term in Rg
         # there is a divergence (as orders of w equal on top and bottom) so we have to separate
         self.zeta=0+0.j #delta function coeff
-
         for indx,(Jw_pol_pos_i,Jw_res_pos_i,Jw_pol_neg_i,Jw_res_neg_i) in enumerate(zip(self.Jw_pol_pos,self.Jw_res_pos,self.Jw_pol_neg,self.Jw_res_neg)):
             self.zeta += 2 * self.Rg_con* (Jw_res_pos_i + Jw_res_neg_i)
             self.kap[indx] += 2.j * self.Rg_con* Jw_res_pos_i*(Jw_pol_pos_i**2 - Jw_pol_pos_i*Jw_pol_neg_i)/(Jw_pol_pos_i-Jw_pol_neg_i)
         return self.kap,self.gam,self.zeta
-        
 
-
-
-        # self.bcf_modes = list(zip(list_g, list_w))
-        # return self.bcf_modes
-    
 if __name__ == '__main__':
+    # Initialize object
     beta=11
     hbar=1
     bcf = BCF(beta=beta, hbar=hbar)
 
-    K=3
+    # set Rg (with K pole A4 decomposition)
+    K=5
     A4decomp = A4Decomposition(beta,hbar,K,distribution='Bose') # Initialize A4 decompostion
-    # lets try one - for the example of Debye bath
-    eta_DL=2
-    gam_DL=2
-
-    Jw_pos_residues = [eta_DL*gam_DL/2]
-    Jw_pos_poles=[1.j*gam_DL]
-
-
-    bcf.set_Jw(Jw_pos_poles, Jw_pos_residues)
-        #     # Get the Radius of Gyration in k, eta form then convert to poles and res and const
-        # # self.eta, self.k = self.A4decomp.compute(doplot=doplot)
-        # # self.eta=np.array([ np.nan, 6.03501352, 1.43972267, 0.48578354],dtype=complex)
-        # # self.k=np.array([0.02192289, 3.8108877,  0.67942028, 0.20435813],dtype=complex)
-    eta=np.array([ np.nan, 6.03501352],dtype=complex)
-    k=np.array([0.02192289, 3.8108877],dtype=complex)
+    eta, k = A4decomp.compute(doplot=False)
     bcf.set_Rg(eta,k)
 
-    if(0):
-        bcf.plot_J(-5, 5)
-        w = np.linspace(-5, 5, 1000)
-        plt.plot(w,eta_DL*gam_DL*w/(w**2+gam_DL**2),linestyle='--',color='k')
-        plt.show()
+    # set Jw (Debye bath)
+    eta_DL=2
+    gam_DL=2
+    Jw_pos_residues = [eta_DL*gam_DL/2]
+    Jw_pos_poles=[1.j*gam_DL]
+    bcf.set_Jw(Jw_pos_poles, Jw_pos_residues)
 
-
-    kap,gam,zet = bcf.compute_bcf(doplot=0)
-    print('test for single Rg pole\n')
+    kap,gam,zet = bcf.compute_bcf()
+    print('Coefficients\n')
     print('kap',kap)
     print('gam',gam)
-    print('zet',zet) #correct for debye
-    print('test for single Rg pole\n')
-   
-    print('zetatest',2*eta_DL*gam_DL*bcf.Rg_con) #zeta test
-    eta_RG=eta[1]
-    k_RG=k[1]
-    print('test kappa[eta_rg]',(eta_DL*gam_DL*k_RG/(gam_DL**2 -eta_RG**2))*-eta_RG) # test for the e^-eta rg
-
-    c0= ((eta_DL*gam_DL*k_RG/(gam_DL**2 -eta_RG**2))*gam_DL) #Rg poles contributions
-    c0 -= bcf.Rg_con*eta_DL*gam_DL**2 #constnt Rg term
-    c0 += eta_DL/beta #classical
-    c0 -= (eta_DL*gam_DL*hbar/2) *1.j #imaginary
-
-    print('test kappa[gamma_DL]',c0) # test for the e^-gamma term
+    print('zet',zet) 
 
 
