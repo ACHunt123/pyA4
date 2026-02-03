@@ -6,56 +6,83 @@ from PyA4 import A4Decomposition
 import numpy as np
 import matplotlib.pyplot as plt
 
-class A4_BCF:
+class BCF:
     """
     Bath correlation function (BCF) constructed from a pole-residue
-    representation of the spectral density using A4 decomposition.
+    representation of the spectral density, and radius of Gyrations
+
+    Assumes simple poles, and that J(w) and Rg(w) also do not share any poles
     """
 
-    def __init__(self, beta, hbar=1.0, K=3, distribution='Fermi'):
+    def __init__(self, beta, hbar=1.0):
         self.beta = beta
         self.hbar = hbar
-        self.K = K
-        self.distribution = distribution
-        self.poles = None
-        self.residues = None
-        # self,beta,hbar,K=4,w_max=None,N_support=10000,fit_mode='uniform',distribution='Bose'
-        self.A4decomp = A4Decomposition(beta,hbar,K,distribution=distribution) # Initialize A4 decompostion
+        self.Jw_pol = None 
+        self.Rg_pol = None
+
     # --------------------------------------------------
     # Input
     # --------------------------------------------------
-    def set_spectral_density(self, poles, residues):
+    def set_Jw(self, pos_poles, pos_residues):
         """
-        Set the pole-residue representation of J(w).
-        J(w) = sum_k residues[k] / (w - poles[k])
-        """
-        poles=np.asarray(poles)
-        residues=np.asarray(residues)
+        Define the pole–residue representation of the spectral density J(ω).
 
-        self.Jw_pol_pos = poles[np.imag(poles)>0]
-        self.Jw_pol_neg = poles[np.imag(poles)<0]
+        Parameters
+        ----------
+        pos_poles : array_like of complex
+            Poles with positive imaginary part. Their complex conjugates are added
+            automatically.
+        pos_residues : array_like of complex
+            Residues corresponding to `pos_poles`. Conjugate residues are added
+            automatically.
+        """
+        self.Jw_pol_pos = np.asarray(pos_poles)
+        self.Jw_pol_neg = np.conj(self.Jw_pol_pos)
         self.Jw_pol = np.concatenate([self.Jw_pol_pos,self.Jw_pol_neg])
 
-        self.Jw_res_pos = residues[np.imag(poles)>0]
-        self.Jw_res_neg = residues[np.imag(poles)<0]
+        self.Jw_res_pos = np.asarray(pos_residues)
+        self.Jw_res_neg =  np.conj(self.Jw_res_pos)
         self.Jw_res =  np.concatenate([self.Jw_res_pos,self.Jw_res_neg])
+        
+    def set_Rg(self,eta,k):
+        """
+        Define the pole–residue representation of the radius of gyration R_g(ω).
 
-        if len(self.Jw_pol) != len(self.Jw_res):
-            raise ValueError("poles and residues must have same length")
+        The function R_g(ω) is assumed to be represented using purely imaginary simple poles
+        occurring in ±iη pairs (as an A4, Pade or Matsubara decomposition would give).
+
+        Parameters
+        ----------
+        eta : array_like of float
+            Positive frequency parameters η_k. The first element corresponds to
+            a constant (non-pole) contribution, and is set as nan
+        k : array_like of float
+            Expansion coefficients associated with η_k.
+            The zeroth coefficient k[0] is stored separately as a constant term.
+        """
+        self.Rg_pol_pos = 1.j*eta[1:]
+        self.Rg_pol_neg = -1.j*eta[1:]
+        self.Rg_pol = np.concatenate([self.Rg_pol_pos,self.Rg_pol_neg])
+
+        self.Rg_res_pos = k[1:]/(self.Rg_pol_pos*2.)
+        self.Rg_res_neg = k[1:]/(self.Rg_pol_neg*2.)
+        self.Rg_res = np.concatenate([self.Rg_res_pos,self.Rg_res_neg])
+        self.Rg_con = k[0]
+
 
     def J(self, w):
         """
         Evaluate the spectral density J(w).
         """
         if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
-        return np.sum(self.Jw_res / (w - self.Jw_pol), axis=0)
+        return np.sum(self.Jw_res[:,None] / (w[None,:] - self.Jw_pol[:,None]), axis=0)
 
     def plot_J(self, wmin, wmax, npts=1000, show=False):
         """
         Plot the spectral density.
         """
         w = np.linspace(wmin, wmax, npts)
-        Jw = np.array([self.J(wi) for wi in w])
+        Jw = self.J(w)
         plt.plot(w, np.real(Jw), label='Re J(w)')
         plt.plot(w, np.imag(Jw), '--', label='Im J(w)')
         plt.xlabel(r'$\omega$')
@@ -63,6 +90,17 @@ class A4_BCF:
         plt.legend()
         plt.tight_layout()
         if show: plt.show()
+
+
+    def evaluate(self,residues,poles,target_pole):
+            ''' Calculates the function, but skips out the 1/0 divergence if present'''
+            result=0+0.j
+            for residue_i,pole_i in zip(residues,poles):
+                if not np.isclose(pole_i, target_pole):
+                    result+=residue_i/(target_pole-pole_i)
+                else:
+                    Warning
+            return result
 
     # --------------------------------------------------
     # BCF
@@ -73,32 +111,14 @@ class A4_BCF:
 
         Outputs in form 
 
-        C(t) = \sum_n kap_n \exp{gam_n t} + delta(t)
+        C(t) = \sum_n kap_n \exp{-gam_n t} + zeta delta(t)
         """
         if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
-
-        # Get the Radius of Gyration in k, eta form then convert to poles and res and const
-        self.eta, self.k = self.A4decomp.compute(doplot=doplot)
-        self.Rg_pol_pos = 1.j*self.eta[1:]
-        self.Rg_pol_neg = -1.j*self.eta[1:]
-        self.Rg_pol = np.concatenate([self.Rg_pol_pos,self.Rg_pol_neg])
-
-        self.Rg_res_pos = self.k[1:]/(self.Rg_pol_pos*2.)
-        self.Rg_res_neg = self.k[1:]/(self.Rg_pol_neg*2.)
-        self.Rg_res = np.concatenate([self.Rg_res_pos,self.Rg_res_neg])
-        self.Rg_con = self.k[0]
-
-        if(0): #check we havent messed up out conversions
-            w=np.linspace(-15,15,1000)
-            plt.plot(w,np.sum(self.Rg_res[:,None]/(w[None,:]-self.Rg_pol[:,None]),axis=0))
-            plt.plot(w,np.imag(np.sum(self.Rg_res[:,None]/(w[None,:]-self.Rg_pol[:,None]),axis=0)),label='imag')
-            plt.plot(w,np.sum(self.k[1:,None]/(self.eta[1:,None]**2+w[None,:]**2),axis=0),label='with etas',linestyle='--',color='k')
-            plt.legend()
-            plt.show()
+        if self.Rg_pol is None: raise RuntimeError("Rg decomposition not set")
 
         # Find the frequencies and the Masks for the Jw and Rg coeffs
-        self.pol_pos=np.concatenate([self.Jw_pol_pos,self.Rg_pol_pos])
-        self.gam=1j*self.pol_pos
+        # self.pol_pos=np.concatenate([self.Jw_pol_pos,self.Rg_pol_pos])
+        self.gam=-1j*np.concatenate([self.Jw_pol_pos,self.Rg_pol_pos])
 
         n_Jw=len(self.Jw_pol_pos)
         Jw_idx = np.arange(n_Jw)
@@ -111,46 +131,52 @@ class A4_BCF:
         self.kap[Jw_idx] += (2.j/self.beta)*self.Jw_res_pos/self.Jw_pol_pos
         # 2) Add on the imaginary stuff
         self.kap[Jw_idx] -=  1.j*self.hbar*self.Jw_res_pos
-        # 3) Add on the Rg poles
-        def res_helper(residues,poles,target_pole):
-            ''' Calculates the function, but skips out the 1/0 divergence if present'''
-            result=0+0.j
-            for residue_i,pole_i in zip(residues,poles):
-                if not np.isclose(pole_i, target_pole):
-                    result+=residue_i/(target_pole-pole_i)
-            return result
+        # 3) Add on the term with Rg poles and Jw poles combined
+        # do the poles in Jw
+        for indx,(Jw_pol_pos_i,Jw_res_pos_i) in enumerate(zip(self.Jw_pol_pos,self.Jw_res_pos)):
+            self.kap[indx] += 2.j * Jw_res_pos_i * self.evaluate(self.Rg_res,self.Rg_pol,Jw_pol_pos_i)*Jw_pol_pos_i
+        # do the poles in Rg
+        for indx,(Rg_pol_pos_i,Rg_res_pos_i) in enumerate(zip(self.Rg_pol_pos,self.Rg_res_pos)):
+            self.kap[indx+n_Jw] += 2.j * Rg_res_pos_i * self.evaluate(self.Jw_res,self.Jw_pol,Rg_pol_pos_i)*Rg_pol_pos_i
+        # 4) Finally do the constant term in Rg
+        # there is a divergence (as orders of w equal on top and bottom) so we have to separate
+        self.zeta=0+0.j #delta function coeff
 
-        for indx,pol_pos_i in enumerate(self.pol_pos):
-            self.kap[indx] += 2.j * res_helper(self.Jw_res,self.Jw_pol,pol_pos_i) * res_helper(self.Rg_res,self.Rg_pol,pol_pos_i)*pol_pos_i
-
-        return self.kap,self.gam
+        for indx,(Jw_pol_pos_i,Jw_res_pos_i,Jw_pol_neg_i,Jw_res_neg_i) in enumerate(zip(self.Jw_pol_pos,self.Jw_res_pos,self.Jw_pol_neg,self.Jw_res_neg)):
+            self.zeta += 2 * self.Rg_con* (Jw_res_pos_i + Jw_res_neg_i)
+            self.kap[indx] += 2.j * self.Rg_con* Jw_res_pos_i*(Jw_pol_pos_i**2 - Jw_pol_pos_i*Jw_pol_neg_i)/(Jw_pol_pos_i-Jw_pol_neg_i)
+        return self.kap,self.gam,self.zeta
         
 
 
-
-                
-
-
-
-        
 
         # self.bcf_modes = list(zip(list_g, list_w))
         # return self.bcf_modes
     
 if __name__ == '__main__':
-    bcf = A4_BCF(beta=11, hbar=1.2, K=3, distribution='Bose')
+    beta=11
+    hbar=1
+    bcf = BCF(beta=beta, hbar=hbar)
 
-
+    K=3
+    A4decomp = A4Decomposition(beta,hbar,K,distribution='Bose') # Initialize A4 decompostion
     # lets try one - for the example of Debye bath
     eta_DL=2
     gam_DL=2
 
-    Jw_residues = [eta_DL*gam_DL/2, eta_DL*gam_DL/2]
-    Jw_poles=[1.j*gam_DL,-1.j*gam_DL]
+    Jw_pos_residues = [eta_DL*gam_DL/2]
+    Jw_pos_poles=[1.j*gam_DL]
 
 
+    bcf.set_Jw(Jw_pos_poles, Jw_pos_residues)
+        #     # Get the Radius of Gyration in k, eta form then convert to poles and res and const
+        # # self.eta, self.k = self.A4decomp.compute(doplot=doplot)
+        # # self.eta=np.array([ np.nan, 6.03501352, 1.43972267, 0.48578354],dtype=complex)
+        # # self.k=np.array([0.02192289, 3.8108877,  0.67942028, 0.20435813],dtype=complex)
+    eta=np.array([ np.nan, 6.03501352],dtype=complex)
+    k=np.array([0.02192289, 3.8108877],dtype=complex)
+    bcf.set_Rg(eta,k)
 
-    bcf.set_spectral_density(Jw_poles, Jw_residues)
     if(0):
         bcf.plot_J(-5, 5)
         w = np.linspace(-5, 5, 1000)
@@ -158,6 +184,23 @@ if __name__ == '__main__':
         plt.show()
 
 
-    kap,gam = bcf.compute_bcf(doplot=0)
+    kap,gam,zet = bcf.compute_bcf(doplot=0)
+    print('test for single Rg pole\n')
     print('kap',kap)
     print('gam',gam)
+    print('zet',zet) #correct for debye
+    print('test for single Rg pole\n')
+   
+    print('zetatest',2*eta_DL*gam_DL*bcf.Rg_con) #zeta test
+    eta_RG=eta[1]
+    k_RG=k[1]
+    print('test kappa[eta_rg]',(eta_DL*gam_DL*k_RG/(gam_DL**2 -eta_RG**2))*-eta_RG) # test for the e^-eta rg
+
+    c0= ((eta_DL*gam_DL*k_RG/(gam_DL**2 -eta_RG**2))*gam_DL) #Rg poles contributions
+    c0 -= bcf.Rg_con*eta_DL*gam_DL**2 #constnt Rg term
+    c0 += eta_DL/beta #classical
+    c0 -= (eta_DL*gam_DL*hbar/2) *1.j #imaginary
+
+    print('test kappa[gamma_DL]',c0) # test for the e^-gamma term
+
+
