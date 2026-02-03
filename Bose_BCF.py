@@ -25,7 +25,14 @@ class BoseBCF:
     # --------------------------------------------------
     def set_Jw(self, pos_poles, pos_residues):
         """
-        Define the pole–residue representation of the spectral density J(ω).
+        Define the pole-residue representation of the spectral density J(ω).
+
+        We use the convention of defining the spectral density as
+
+            J(ω) = (π / 2) ∑_α c_α² ω_α[ δ(ω − ω_α) + δ(ω + ω_α) ],
+
+        where c_α are the system-bath coupling constants and ω_α are the
+        bath mode frequencies.
 
         Parameters
         ----------
@@ -102,6 +109,20 @@ class BoseBCF:
     def compute_bcf(self):
         """
         Compute the bath correlation function using the poles and residues supplied.
+
+        The correlation function is defined as
+
+            C(t) = (1/π) ∫ dω J(ω) ω B(ω, t),
+
+        where J(ω) is the bath spectral density and B(ω, t) is the
+        position autocorrelation function of a bath mode.
+
+        For our Bosonic bath, B(ω, t) is given by
+
+            B(ω, t) = [ 1/(β ω²) + R²(ω) ] cos(ω t) − i ℏ/(2 ω) sin(ω t),
+
+        where β = 1/(k_B T) is the inverse temperature, ℏ is the reduced
+        Planck constant, and R²(ω) is the radius of gyration.
 
         Outputs coefficients such that
         C(t) = \sum_n kap[n] \exp{-gam[n] t} + zeta delta(t)
