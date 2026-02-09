@@ -35,7 +35,7 @@ class A4Decomposition():
     where :math:`k_n` and :math:`\\eta_n` are the A4 coefficients.
 
     """
-    def __init__(self,beta,hbar,K=4,w_max=None,N_support=10000,fit_mode='uniform',distribution='Bose',rational_decomposition_type='AAA'):
+    def __init__(self,beta,K=4,w_max=None,N_support=10000,fit_mode='uniform',distribution='Bose',rational_decomposition_type='AAA'):
         """
         Initialize an A4 spectral decomposition.
 
@@ -43,14 +43,12 @@ class A4Decomposition():
         ----------
         beta : float
             Inverse temperature :math:`\\beta = 1/(k_B T)`.
-        hbar : float
-            Reduced Planck constant in the chosen unit system.
         K : int, optional
             Number of exponentials retained in the A4 decomposition.
             Defaults to 4.
         w_max : float, optional
             Maximum frequency used to construct the support grid.
-            Defaults to 200/(beta hbar) [such that beta hbar w_max/2 = 100]
+            Defaults to 200/beta [such that beta w_max/2 = 100]
         N_support : int, optional
             Number of support points used in the rational approximation.
             Defaults to 10000.
@@ -65,10 +63,9 @@ class A4Decomposition():
         """
         # inputs
         self.beta=beta
-        self.hbar=hbar
         self.K=K
         # fitting parameters
-        self.w_max = 200/(beta*hbar) if w_max == None else w_max
+        self.w_max = 200/(beta) if w_max == None else w_max
         self.fit_mode=fit_mode
         self.N_support=N_support
         # distribution parameters (Bose/Fermi)
@@ -135,9 +132,9 @@ class A4Decomposition():
             self._Rg=np.zeros_like(support)
             for i, wi in enumerate(support):
                 if wi!=0:
-                    self._Rg[i] = (self.hbar/(2*wi))*(1/np.tanh(self.beta*self.hbar*wi/2) - 2/(self.beta*self.hbar*wi))
+                    self._Rg[i] = (1/(2*wi))*(1/np.tanh(self.beta*wi/2) - 2/(self.beta*wi))
                 else: # treat the 0 divergence nicely
-                    self._Rg[i] = (self.beta*self.hbar**2)/12
+                    self._Rg[i] = (self.beta)/12
         return self._Rg
 
     @property 
@@ -160,9 +157,9 @@ class A4Decomposition():
             self._Fp=np.zeros_like(support)
             for i, wi in enumerate(support): 
                 if wi!=0:
-                    self._Fp[i] = (self.hbar/(2*wi))*(np.tanh(self.beta*self.hbar*wi/2))
+                    self._Fp[i] = (1/(2*wi))*(np.tanh(self.beta*wi/2))
                 else: # treat the 0 divergence nicely
-                    self._Fp[i] = (self.beta*self.hbar**2)/4
+                    self._Fp[i] = (self.beta)/4
         return self._Fp
     
 
@@ -309,7 +306,7 @@ class A4Decomposition():
 
     def printparams(self):
         ''' builds string of parameters used in the decomposition'''
-        self._PARAMETERS = ("beta","hbar","K","w_max","N_support","fit_mode","gamma")
+        self._PARAMETERS = ("beta","K","w_max","N_support","fit_mode","gamma")
         return  "\n".join(f"{name} = {getattr(self, name)}" for name in self._PARAMETERS if hasattr(self, name))
 
 
@@ -331,10 +328,7 @@ class A4Decomposition():
 
 if __name__=='__main__':
     rdt=['AAA','ESPRIT_FT','AAA_BT'][0]
-    rdt=['AAA','ESPRIT_FT','AAA_BT'][2]
-    # A4decomp=A4Decomposition(beta=100,hbar=1,K=5,distribution='Fermi',N_support=10000)
-    A4decomp=A4Decomposition(beta=100,hbar=1,K=10,distribution='Bose',N_support=10000,rational_decomposition_type=rdt)
-    # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Fermi')
-    # A4decomp=A4Decomposition(beta=200,hbar=1,K=10,distribution='Bose')
+    # A4decomp=A4Decomposition(beta=100,K=5,distribution='Fermi',N_support=10000)
+    A4decomp=A4Decomposition(beta=100,K=3,distribution='Bose',N_support=10000,rational_decomposition_type=rdt)
     A4decomp.compute(doplot=True)
     # A4decomp.writetofile(outpath='data')

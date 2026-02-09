@@ -14,9 +14,8 @@ class BoseBCF:
     Assumes simple poles, and that J(w) and Rg(w) also do not share any poles
     """
 
-    def __init__(self, beta, hbar=1.0):
+    def __init__(self, beta):
         self.beta = beta
-        self.hbar = hbar
         self.Jw_pol = None 
         self.Rg_pol = None
 
@@ -158,7 +157,7 @@ class BoseBCF:
         # 1) Add on the classical stuff IGNORING 1/w PV (as it must cancel by symmetry)
         self.kap[Jw_idx] += (2.j/self.beta)*self.Jw_res_pos/self.Jw_pol_pos
         # 2) Add on the imaginary stuff
-        self.kap[Jw_idx] -=  1.j*self.hbar*self.Jw_res_pos
+        self.kap[Jw_idx] -=  1.j*self.Jw_res_pos
         # 3) Add on the term with Rg poles and Jw poles combined
         # do the poles in Jw
         for indx,(Jw_pol_pos_i,Jw_res_pos_i) in enumerate(zip(self.Jw_pol_pos,self.Jw_res_pos)):
@@ -202,7 +201,7 @@ class BoseBCF:
         self.kap=np.zeros_like(self.gam,dtype=complex)
         
         # Get the infinite mode prefactors for Jw
-        self.kap[Jw_idx] = 1.j*self.hbar*self.Jw_res_pos/np.tanh(self.beta*self.hbar*self.Jw_pol_pos/2)
+        self.kap[Jw_idx] = 1.j*self.Jw_res_pos/np.tanh(self.beta*self.Jw_pol_pos/2)
 
         # do the explicit matsubara poles' prefactors
         for indx,(wn) in enumerate(wns):
@@ -210,29 +209,25 @@ class BoseBCF:
             Rg_res_pos_i = -1.j/(self.beta*wn)
             self.kap[indx+n_Jw] += 2.j * Rg_res_pos_i * self.evaluate(self.Jw_res,self.Jw_pol,Rg_pol_pos_i)*Rg_pol_pos_i
         
-
         # do the Ishizaki-Tanimura for the delta function (assumes J(w->0) ~ w)
         # done by calculation of area under the Re[C(t)] then removing the exponentials
         total_area = np.sum(-2*self.Jw_res_pos/self.Jw_pol_pos**2)/self.beta
         area = total_area - np.sum(self.kap/self.gam)
-        self.zeta=area*2  # as the delta function covers + and -
+        self.zeta=area*2  # as the delta function covers + and - and we calculate only area of +ve t
 
-
-        # 2) Add on the imaginary stuff
-        self.kap[Jw_idx] -=  1.j*self.hbar*self.Jw_res_pos
-
-
+        # add on the imaginary stuff
+        self.kap[Jw_idx] -=  1.j*self.Jw_res_pos
 
         return self.kap,self.gam,self.zeta
 
 if __name__ == '__main__':
     # Initialize object
     beta=11
-    hbar=1
-    bcf = BoseBCF(beta=beta, hbar=hbar)
+    bcf = BoseBCF(beta=beta)
 
     # set Rg (with K pole A4 decomposition)
     K=5
+    hbar=1
     A4decomp = A4Decomposition(beta,hbar,K,distribution='Bose') # Initialize A4 decompostion
     eta, k = A4decomp.compute(doplot=False)
     bcf.set_Rg_lorentzian_form(eta,k)
