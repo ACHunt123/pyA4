@@ -8,19 +8,19 @@ This code decomposes thermal functions into a **small number of exponential term
 
 ## Overview
 
-The central objects decomposed are:
+The central objects decomposed (assuming units where $\hbar=1$) are:
 
 ### Bose function
 Via the ring-polymer radius of gyration:
 
-$$\mathcal{R}^2(\omega) = \frac{\hbar}{2\omega} \left[ \coth \left( \frac{\beta\hbar\omega}{2} \right) - \frac{2}{\beta\hbar\omega} \right]$$
+$$\mathcal{R}^2(\omega) = \frac{1}{2\omega} \left[ \coth \left( \frac{\beta\omega}{2} \right) - \frac{2}{\beta\omega} \right]$$
 
 ### Fermi function
 Via the 'Fermi pole function':
 
 $$
-\mathcal{F}(\omega) = \frac{\hbar}{2\omega}
-\tanh\left(\frac{\beta\hbar\omega}{2}\right)
+\mathcal{F}(\omega) = \frac{1}{2\omega}
+\tanh\left(\frac{\beta\omega}{2}\right)
 $$
 
 These are both approximated in the form:
