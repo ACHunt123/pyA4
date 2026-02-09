@@ -70,7 +70,6 @@ from PyA4 import A4Decomposition
 
 A4 = A4Decomposition(
     beta=100,
-    hbar=1.0,
     K=10,
     distribution="Bose",
     rational_decomposition_type="AAA",
