@@ -51,7 +51,7 @@ class BoseBCF:
         self.Jw_res_neg =  np.conj(self.Jw_res_pos)
         self.Jw_res =  np.concatenate([self.Jw_res_pos,self.Jw_res_neg])
         
-    def set_Rg(self,eta,k):
+    def set_Rg_lorentzian_form(self,eta,k):
         """
         Define the pole–residue representation of the radius of gyration R_g(ω).
 
@@ -67,15 +67,34 @@ class BoseBCF:
             Expansion coefficients associated with η_k.
             The zeroth coefficient k[0] is stored separately as a constant term.
         """
-        self.Rg_pol_pos = 1.j*eta[1:]
-        self.Rg_pol_neg = -1.j*eta[1:]
+        Rg_pol_pos = 1.j*eta[1:]
+        Rg_res_pos = k[1:]/(Rg_pol_pos*2.)
+        Rg_con = k[0]
+        self.set_Rg(Rg_pol_pos,Rg_res_pos,Rg_con)
+
+    def set_Rg(self, pos_poles, pos_residues,constant):
+        """
+        Define the pole-residue representation of the radius of gyration R_g(ω).
+
+        Parameters
+        ----------
+        pos_poles : array_like of complex
+            Poles with positive imaginary part. Their complex conjugates are added
+            automatically.
+        pos_residues : array_like of complex
+            Residues corresponding to `pos_poles`. Conjugate residues are added
+            automatically.
+    
+        """
+        self.Rg_pol_pos = np.asarray(pos_poles)
+        self.Rg_pol_neg = np.conj(self.Rg_pol_pos)
         self.Rg_pol = np.concatenate([self.Rg_pol_pos,self.Rg_pol_neg])
 
-        self.Rg_res_pos = k[1:]/(self.Rg_pol_pos*2.)
-        self.Rg_res_neg = k[1:]/(self.Rg_pol_neg*2.)
-        self.Rg_res = np.concatenate([self.Rg_res_pos,self.Rg_res_neg])
-        self.Rg_con = k[0]
+        self.Rg_res_pos = np.asarray(pos_residues)
+        self.Rg_res_neg =  np.conj(self.Rg_res_pos)
+        self.Rg_res =  np.concatenate([self.Rg_res_pos,self.Rg_res_neg])
 
+        self.Rg_con = constant
 
     def J(self, w):
         if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
@@ -92,7 +111,6 @@ class BoseBCF:
         plt.tight_layout()
         if show: plt.show()
 
-
     def evaluate(self,residues,poles,target_pole):
             ''' Calculates the function, but skips out the 1/0 divergence if present'''
             result=0+0.j
@@ -100,7 +118,7 @@ class BoseBCF:
                 if not np.isclose(pole_i, target_pole):
                     result+=residue_i/(target_pole-pole_i)
                 else:
-                    Warning
+                    raise ValueError("Coinciding poles detected in residue calculation.")
             return result
 
     # --------------------------------------------------
@@ -155,6 +173,57 @@ class BoseBCF:
             self.zeta += 2 * self.Rg_con* (Jw_res_pos_i + Jw_res_neg_i)
             self.kap[indx] += 2.j * self.Rg_con* Jw_res_pos_i*(Jw_pol_pos_i**2 - Jw_pol_pos_i*Jw_pol_neg_i)/(Jw_pol_pos_i-Jw_pol_neg_i)
         return self.kap,self.gam,self.zeta
+    
+    def compute_mats_infin_bcf(self,K):
+        """
+        Compute the bath correlation function using the poles and residues supplied from J(w).
+
+        Uses the Matsubara decomposition for the bath with infinite modes.
+
+        The correlation function is defined as
+
+            C(t) = (1/π) ∫ dω J(ω) ω B(ω, t),
+
+        where J(ω) is the bath spectral density.
+          such that
+        C(t) = \sum_n kap[n] \exp{-gam[n] t} + zeta delta(t)
+        """
+        if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
+
+        # Get the matsubara frequencies
+        wns = np.arange(1,K+1)*2*np.pi/(self.beta)
+
+        # Find the frequencies and the Masks for the Jw and Rg coeffs
+        self.gam=np.concatenate([-1j*self.Jw_pol_pos,wns])
+        n_Jw=len(self.Jw_pol_pos)
+        Jw_idx = np.arange(n_Jw)
+
+        # Find the prefactors
+        self.kap=np.zeros_like(self.gam,dtype=complex)
+        
+        # Get the infinite mode prefactors for Jw
+        self.kap[Jw_idx] = 1.j*self.hbar*self.Jw_res_pos/np.tanh(self.beta*self.hbar*self.Jw_pol_pos/2)
+
+        # do the explicit matsubara poles' prefactors
+        for indx,(wn) in enumerate(wns):
+            Rg_pol_pos_i = 1.j*wn
+            Rg_res_pos_i = -1.j/(self.beta*wn)
+            self.kap[indx+n_Jw] += 2.j * Rg_res_pos_i * self.evaluate(self.Jw_res,self.Jw_pol,Rg_pol_pos_i)*Rg_pol_pos_i
+        
+
+        # do the Ishizaki-Tanimura for the delta function (assumes J(w->0) ~ w)
+        # done by calculation of area under the Re[C(t)] then removing the exponentials
+        total_area = np.sum(-2*self.Jw_res_pos/self.Jw_pol_pos**2)/self.beta
+        area = total_area - np.sum(self.kap/self.gam)
+        self.zeta=area*2  # as the delta function covers + and -
+
+
+        # 2) Add on the imaginary stuff
+        self.kap[Jw_idx] -=  1.j*self.hbar*self.Jw_res_pos
+
+
+
+        return self.kap,self.gam,self.zeta
 
 if __name__ == '__main__':
     # Initialize object
@@ -166,7 +235,7 @@ if __name__ == '__main__':
     K=5
     A4decomp = A4Decomposition(beta,hbar,K,distribution='Bose') # Initialize A4 decompostion
     eta, k = A4decomp.compute(doplot=False)
-    bcf.set_Rg(eta,k)
+    bcf.set_Rg_lorentzian_form(eta,k)
 
     # set Jw (Debye bath)
     eta_DL=2

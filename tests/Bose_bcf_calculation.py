@@ -16,7 +16,7 @@ bcf.set_Jw(Jw_pos_poles, Jw_pos_residues)
 # setup the RG    
 eta=np.array([ np.nan, 6.03501352],dtype=complex)
 k=np.array([0.02192289, 3.8108877],dtype=complex)
-bcf.set_Rg(eta,k)
+bcf.set_Rg_lorentzian_form(eta,k)
 
 # Calculate the BCF
 
