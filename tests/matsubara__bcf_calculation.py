@@ -31,7 +31,7 @@ c0= (eta_DL*gam_DL/2) /np.tan(beta*gam_DL/2) #Rg poles contributions
 c0 -= (eta_DL*gam_DL/2) *1.j #imaginary
 d=np.zeros_like(wns)
 d[1:] = -(2*eta_DL*gam_DL/beta) * wns[1:]/(gam_DL**2*np.ones_like(wns[1:]) - wns[1:]**2)
-kap_analytic=[c0,*d]
+kap_analytic=[c0,*d[1:]]
 gam_analytic=[gam_DL,*wns[1:]]
 zet_analytic=-lowTcoef*2
 print('\nAnalytic')

@@ -66,6 +66,8 @@ class BoseBCF:
             Expansion coefficients associated with η_k.
             The zeroth coefficient k[0] is stored separately as a constant term.
         """
+        eta=np.asarray(eta)
+        k=np.asarray(k)
         Rg_pol_pos = 1.j*eta[1:]
         Rg_res_pos = k[1:]/(Rg_pol_pos*2.)
         Rg_con = k[0]
@@ -98,6 +100,10 @@ class BoseBCF:
     def J(self, w):
         if self.Jw_pol is None: raise RuntimeError("Spectral density not set")
         return np.sum(self.Jw_res[:,None] / (w[None,:] - self.Jw_pol[:,None]), axis=0)
+    
+    def Rg(self, w):
+        if self.Rg_pol is None: raise RuntimeError("Spectral density not set")
+        return np.sum(self.Rg_res[:,None] / (w[None,:] - self.Rg_pol[:,None]), axis=0)+self.Rg_con
 
     def plot_J(self, wmin, wmax, npts=1000, show=False):
         w = np.linspace(wmin, wmax, npts)

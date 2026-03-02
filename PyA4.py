@@ -5,7 +5,8 @@ __maintainer__ = 'A. C. Hunt'
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from decompositions import AAA,ESPRIT_FT,AAA_BT
+from scipy.interpolate import AAA as scipy_AAA
+from decompositions import ESPRIT_FT,AAA_BT
 
 class A4Decomposition():
     """
@@ -65,7 +66,7 @@ class A4Decomposition():
         self.beta=beta
         self.K=K
         # fitting parameters
-        self.w_max = 200/(beta) if w_max == None else w_max
+        self.w_max = 500/(beta) if w_max == None else w_max
         self.fit_mode=fit_mode
         self.N_support=N_support
         # distribution parameters (Bose/Fermi)
@@ -163,24 +164,25 @@ class A4Decomposition():
         return self._Fp
     
 
-    def rational_decomp(self, support, func, tolerance):
+    def rational_decomp(self, support, func):
         
         if self.rational_decomposition_type == 'AAA':
-            return AAA(support,func,tolerance)
+            r=scipy_AAA(support, func, max_terms=2*self.K+1,rtol=0)
+            return r.poles(),r.residues(),r(support)
         
-        if self.rational_decomposition_type == 'ESPRIT':
+        elif self.rational_decomposition_type == 'ESPRIT_FT':
             assert self.fit_mode=='uniform' # Ensure support is uniform
             self.keep_going=False           # exit the iterations (K poles is guaranteed)
             return ESPRIT_FT(support,func,self.K)  
 
-        if self.rational_decomposition_type == 'AAA_BT':
+        elif self.rational_decomposition_type == 'AAA_BT':
             self.keep_going=False           # exit the iterations (K poles is guaranteed)
             return AAA_BT(support,func,self.K)  
             
         else:
-            raise ValueError('Invalid mode for generating support points. Use "log", "quadrature", "arctanh" or "uniform".')
+            raise ValueError('Invalid mode for rational decomposition')
 
-    def compute(self, max_accuracy=False, doplot=False):
+    def compute(self, doplot=False):
         """
         A4 decomposition of the Radius of Gyration/ Fermi pole function.
         Adds the results to the class object
@@ -191,8 +193,6 @@ class A4Decomposition():
             File path for saved outputs
         extension : str
             File extension for saved outputs
-        max_accuracy : bool
-            If True, return as many poles as needed for maximum accuracy in the AAA fit
         doplot : bool
             If True, show plots of the original function and AAA approximants
         
@@ -216,49 +216,19 @@ class A4Decomposition():
                raise ValueError( f"Unknown distribution '{self.distribution}'. "
                                 "Expected 'Bose' or 'Fermi'.")
                                             
+            # Compute residues and poles (complex)
             support = self.support+ 0j    
-
-            # Binary search for tolerance if K poles desired (assumes smaller tolerance => more pols)
-            if max_accuracy:
-                tol = 1e-10
-                self.K = 10 **10
-                pol,res,fit = self.rational_decomp(support, Fx, tol)
-            else:
-                max_tol = 1e0
-                min_tol = 1e-31
-                tol_err = 1e-15
-
-                while self.keep_going==True:
-                    tol = (max_tol + min_tol) / 2
-                    pol,res,fit = self.rational_decomp(support, Fx, tol)
-                    # select significant poles
-                    pol_clean = pol[np.imag(pol) > 1e-10]
-                    print(f'\rtol = {tol:.4g} -> {len(pol_clean)} poles', end='', flush=True)
-                    if len(pol_clean) <= self.K:
-                        max_tol = tol
-                    else:
-                        min_tol = tol
-
-                    if abs(max_tol - min_tol) < tol_err:
-                        pol,res,fit = self.rational_decomp(support, Fx, max_tol)
-                        pol_clean = pol[np.imag(pol) > 1e-10]
-                        if len(pol_clean) != self.K:
-                            print(f'\rWarning: desired K={self.K}, found {len(pol_clean)} poles')
-                        break
-            print('\r', end='', flush=True)
-            # Compute residues and get the AAA fit
-            self.pol = pol
-            self.res = res
-            fit_AAA = fit
-
+            self.pol,self.res,original_fit=self.rational_decomp(support, Fx)
             # Project onto imaginary-only poles
             mask = np.imag(self.pol) > 1e-50
             pol_pos = self.pol[mask]
             res_pos = self.res[mask]
+            if len(pol_pos) != self.K:
+                print(f'\rWarning: desired K={self.K}, found {len(pol_pos)} poles')
 
             # calculate the gams and ws from pairs of conjugate pure-imaginary poles
             k_n_imagonly_nogam0 = -2*np.imag(pol_pos) * np.imag(res_pos)  
-            k_n_imagonly = np.array([fit[-1],*k_n_imagonly_nogam0]) # constant and residues for imaginary-only poles
+            k_n_imagonly = np.array([original_fit[-1],*k_n_imagonly_nogam0]) # constant and residues for imaginary-only poles
             eta_n = np.imag(pol_pos)                          # new poles for imaginary-only poles
 
             # Calculate the basis functions
@@ -280,7 +250,7 @@ class A4Decomposition():
 
             # Compute errors (meansq error, converges to the integrated error for uniform spacing ONLY)
             error_im_pols = np.sum(np.abs(Fx - fit_im_pols)**2)
-            error_AAA = np.sum(np.abs(Fx - fit_AAA)**2)
+            error_AAA = np.sum(np.abs(Fx - original_fit)**2)
             error_A4 = np.sum(np.abs(Fx - fit_A4)**2)
             print(f'Error from original AAA approximant: {error_AAA:.2e}')
             print(f'Error from using only imaginary poles and residues: {error_im_pols:.2e}')
@@ -289,7 +259,7 @@ class A4Decomposition():
             if doplot: # Plot results
                 plt.figure()
                 plt.plot(support.real, Fx.real , 'k-', label='Exact')
-                plt.plot(support.real, fit_AAA.real, 'r--', label=f'{self.rational_decomposition_type} (error={error_AAA:.2e})')
+                plt.plot(support.real, original_fit.real, 'r--', label=f'{self.rational_decomposition_type} (error={error_AAA:.2e})')
                 plt.plot(support.real, fit_A4.real, 'g--', label=f'A4 using {self.rational_decomposition_type} (error={error_A4:.2e})')
                 plt.plot(support.real, fit_im_pols.real, 'b--', label=f'Imag-only poles (error={error_im_pols:.2e})')
                 plt.xlabel(r'$\omega$')
